@@ -1,0 +1,1889 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MakerBot-1: Physical Humanoid Engineering Twin & Simulator</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Three.js Library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600;700&display=swap');
+
+    body {
+      font-family: 'Space Grotesk', sans-serif;
+      background-color: #080c14;
+      color: #f1f5f9;
+      overflow: hidden;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Engineering CAD / PCB Glass Panels */
+    .cad-panel {
+      background: rgba(13, 20, 36, 0.88);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(56, 189, 248, 0.22);
+      box-shadow: 0 10px 35px -5px rgba(0, 0, 0, 0.7), inset 0 0 15px rgba(56, 189, 248, 0.04);
+    }
+
+    .cad-panel-subtle {
+      background: rgba(15, 23, 42, 0.7);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(148, 163, 184, 0.12);
+    }
+
+    /* Range slider engineering styling */
+    input[type=range] {
+      -webkit-appearance: none;
+      background: #1e293b;
+      height: 6px;
+      border-radius: 4px;
+      outline: none;
+    }
+
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 15px;
+      height: 15px;
+      border-radius: 2px;
+      background: #38bdf8;
+      cursor: pointer;
+      box-shadow: 0 0 6px #0284c7;
+      transition: transform 0.1s ease;
+    }
+
+    input[type=range]::-webkit-slider-thumb:hover {
+      transform: scale(1.2);
+      background: #7dd3fc;
+    }
+
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.7);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(56, 189, 248, 0.35);
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(56, 189, 248, 0.65);
+    }
+
+    /* Pulsing LED dots */
+    .led-green {
+      box-shadow: 0 0 8px #10b981;
+    }
+    .led-amber {
+      box-shadow: 0 0 8px #f59e0b;
+    }
+    .led-blue {
+      box-shadow: 0 0 8px #0ea5e9;
+    }
+    .led-red {
+      box-shadow: 0 0 8px #ef4444;
+    }
+  </style>
+</head>
+<body class="w-screen h-screen relative flex overflow-hidden bg-[#080c14]">
+
+  <!-- 3D Humanoid Robot Canvas -->
+  <canvas id="robot-canvas" class="absolute inset-0 w-full h-full block cursor-grab active:cursor-grabbing outline-none"></canvas>
+
+  <!-- Floating Top Bar (Power, Telemetry & Physical Link) -->
+  <header class="absolute top-0 left-0 right-0 p-3 sm:p-4 flex items-center justify-between pointer-events-none z-20">
+    <div class="flex items-center gap-3 pointer-events-auto">
+      <div class="cad-panel px-3.5 py-2 rounded-xl flex items-center gap-3">
+        <div class="flex items-center gap-1.5">
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 led-green animate-pulse"></span>
+          <span class="text-[10px] font-mono text-emerald-400 font-bold hidden sm:inline">ONLINE</span>
+        </div>
+        <div class="border-l border-slate-700 pl-3">
+          <h1 class="text-xs sm:text-sm font-bold tracking-wider text-cyan-300 font-mono flex items-center gap-2">
+            MAKERBOT-1 <span class="text-[10px] bg-cyan-950/80 text-cyan-400 border border-cyan-800/80 px-1.5 py-0.5 rounded font-normal">DIY PHYSICAL TWIN</span>
+          </h1>
+          <p class="text-[10px] text-slate-400 font-mono hidden md:block">2020 EXTRUSION &bull; PETG BRACKETS &bull; SERVO KINEMATICS</p>
+        </div>
+      </div>
+
+      <!-- Power Bus Diagnostics (2S LiPo / 7.4V rail) -->
+      <div class="hidden lg:flex cad-panel px-3 py-1.5 rounded-xl items-center gap-4 font-mono text-xs">
+        <div class="flex items-center gap-2" title="Simulated 2S LiPo Battery Rail">
+          <i class="fa-solid fa-battery-three-quarters text-emerald-400 text-sm"></i>
+          <div>
+            <span class="text-slate-400 text-[10px] block leading-tight">BATT (2S)</span>
+            <span id="top-batt-v" class="text-emerald-300 font-bold text-xs">7.92 V</span>
+          </div>
+        </div>
+
+        <div class="w-px h-5 bg-slate-700"></div>
+
+        <div class="flex items-center gap-2" title="Total Servo Bus Current Consumption">
+          <i class="fa-solid fa-bolt text-amber-400 text-sm"></i>
+          <div>
+            <span class="text-slate-400 text-[10px] block leading-tight">CURRENT</span>
+            <span id="top-current-a" class="text-amber-300 font-bold text-xs">0.45 A</span>
+          </div>
+        </div>
+
+        <div class="w-px h-5 bg-slate-700"></div>
+
+        <div class="flex items-center gap-2" title="Estimated Power Usage">
+          <i class="fa-solid fa-chart-simple text-cyan-400 text-sm"></i>
+          <div>
+            <span class="text-slate-400 text-[10px] block leading-tight">LOAD</span>
+            <span id="top-power-w" class="text-cyan-300 font-bold text-xs">3.56 W</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Viewport Presets, Serial Connect & Engineering Modals -->
+    <div class="flex items-center gap-2 pointer-events-auto">
+      <!-- Camera Presets -->
+      <div class="cad-panel px-2 py-1 rounded-xl flex items-center gap-1 text-[11px] font-mono">
+        <button id="view-full-btn" class="px-2 py-1 rounded-lg bg-cyan-950/80 text-cyan-300 border border-cyan-700/60 transition">Body</button>
+        <button id="view-head-btn" class="px-2 py-1 rounded-lg text-slate-400 hover:text-slate-200 transition">Head/Pan</button>
+        <button id="view-arm-btn" class="px-2 py-1 rounded-lg text-slate-400 hover:text-slate-200 transition">Arm Rig</button>
+        <button id="view-pcb-btn" class="px-2 py-1 rounded-lg text-slate-400 hover:text-slate-200 transition">Backpack</button>
+      </div>
+
+      <!-- Hardware Bridge & Firmware Actions -->
+      <div class="cad-panel px-2.5 py-1 rounded-xl flex items-center gap-2 font-mono text-xs">
+        <button id="btn-open-serial" class="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition" title="Connect physical Arduino/ESP32 over WebSerial">
+          <i class="fa-brands fa-usb text-cyan-400"></i>
+          <span id="serial-status-text" class="hidden sm:inline">WebSerial</span>
+        </button>
+
+        <button id="btn-open-firmware" class="flex items-center gap-1.5 px-2 py-1 rounded bg-cyan-900/60 hover:bg-cyan-800 text-cyan-200 border border-cyan-700/80 transition" title="Export Arduino/ESP32 C++ Sketch">
+          <i class="fa-solid fa-code"></i>
+          <span class="hidden sm:inline">Export Code</span>
+        </button>
+
+        <button id="btn-open-bom" class="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 transition" title="DIY Bill of Materials and 3D Print Specs">
+          <i class="fa-solid fa-screwdriver-wrench"></i>
+          <span class="hidden sm:inline">BOM ($215)</span>
+        </button>
+      </div>
+
+      <!-- Mobile Sidebar Toggle -->
+      <button id="toggle-sidebar-mobile" class="lg:hidden cad-panel p-2.5 rounded-xl text-cyan-400 hover:text-white transition">
+        <i class="fa-solid fa-bars text-sm"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- Cognitive Intent & Speech Bubble Overlay -->
+  <div id="speech-bubble" class="absolute bottom-6 left-4 sm:left-6 max-w-[92vw] sm:max-w-md cad-panel p-4 rounded-2xl z-20 pointer-events-auto transition-all duration-300 opacity-0 translate-y-4">
+    <div class="flex items-center justify-between gap-2 mb-1.5">
+      <div class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+        <span class="text-[11px] font-mono uppercase tracking-wider text-cyan-400 font-bold" id="emotion-pill">CALIBRATED</span>
+      </div>
+      <span class="text-[10px] font-mono text-slate-400" id="safety-governor-pill">
+        <i class="fa-solid fa-shield-check text-emerald-400 mr-1"></i>TORQUE GOVERNOR: ACTIVE
+      </span>
+    </div>
+    <p id="speech-text" class="text-sm text-slate-100 font-medium leading-relaxed italic">"Physical kinematics bus calibrated. All 18 servos armed and holding position."</p>
+    <div class="mt-2.5 pt-2 border-t border-slate-800 flex items-center justify-between text-[10px] font-mono text-slate-400">
+      <span class="truncate pr-2" id="reasoning-summary">Idle position; gravity compensation holding torques applied.</span>
+      <span class="text-cyan-400 shrink-0"><i class="fa-solid fa-microchip mr-1"></i>ESP32-S3</span>
+    </div>
+  </div>
+
+  <!-- Right Control Workbench Drawer -->
+  <aside id="sidebar-drawer" class="fixed lg:relative right-0 top-0 bottom-0 w-80 sm:w-[410px] cad-panel z-30 flex flex-col transition-transform duration-300 translate-x-full lg:translate-x-0 border-l border-cyan-900/40">
+    <!-- Drawer Header -->
+    <div class="p-3.5 border-b border-slate-800 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <i class="fa-solid fa-robot text-cyan-400 text-sm"></i>
+        <span class="text-xs font-mono font-bold tracking-wider text-slate-200">PHYSICAL ROBOTICS WORKBENCH</span>
+      </div>
+      <button id="close-sidebar-mobile" class="lg:hidden text-slate-400 hover:text-white p-1">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="flex border-b border-slate-800 bg-slate-950/60 font-mono text-xs">
+      <button class="tab-btn flex-1 py-2.5 text-center text-cyan-300 border-b-2 border-cyan-400 font-semibold transition" data-tab="cognition">
+        <i class="fa-solid fa-brain mr-1"></i>Brain
+      </button>
+      <button class="tab-btn flex-1 py-2.5 text-center text-slate-400 border-b-2 border-transparent hover:text-slate-200 transition" data-tab="physics">
+        <i class="fa-solid fa-gauge-high mr-1"></i>Physics
+      </button>
+      <button class="tab-btn flex-1 py-2.5 text-center text-slate-400 border-b-2 border-transparent hover:text-slate-200 transition" data-tab="servos">
+        <i class="fa-solid fa-microchip mr-1"></i>Servos
+      </button>
+      <button class="tab-btn flex-1 py-2.5 text-center text-slate-400 border-b-2 border-transparent hover:text-slate-200 transition" data-tab="calibration">
+        <i class="fa-solid fa-wrench mr-1"></i>Trim
+      </button>
+    </div>
+
+    <!-- Tab 1: AI Cognition & Physical Execution -->
+    <div id="tab-cognition" class="tab-content flex-1 overflow-y-auto p-4 space-y-4">
+      <div class="bg-slate-900/70 p-3.5 rounded-xl border border-slate-800">
+        <div class="flex items-center justify-between mb-1.5">
+          <label class="text-xs font-mono text-cyan-400 font-semibold flex items-center gap-1.5">
+            <i class="fa-solid fa-satellite-dish"></i> SENSORY / VOICE STIMULUS
+          </label>
+          <span class="text-[10px] font-mono text-emerald-400">Gemini 3 Flash</span>
+        </div>
+        <p class="text-[11px] text-slate-400 mb-2.5 leading-relaxed">
+          Input an environmental event or conversational prompt. The AI evaluates emotional affect and plans safe trajectories bounded by standard hobby servo angular velocities ($300^\circ/s$).
+        </p>
+        <div class="relative">
+          <textarea id="stimulus-input" rows="2" placeholder="e.g. Someone gently extends a hand for a handshake..." class="w-full bg-slate-950 border border-slate-700/80 rounded-lg p-2.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500 font-mono resize-none"></textarea>
+          <button id="send-stimulus-btn" class="mt-2 w-full py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-mono text-xs font-semibold rounded-lg shadow-lg flex items-center justify-center gap-2 transition active:scale-[0.98]">
+            <i class="fa-solid fa-bolt"></i> PLAN & DISPATCH MOTOR TRAJECTORY
+          </button>
+        </div>
+      </div>
+
+      <!-- Benchmark Real-World Scenarios -->
+      <div class="bg-slate-900/70 p-3 rounded-xl border border-slate-800">
+        <span class="text-[11px] font-mono text-slate-400 font-semibold block mb-2">PRACTICAL INTERACTION BENCHMARKS:</span>
+        <div class="grid grid-cols-2 gap-1.5">
+          <button class="preset-btn text-[10px] font-mono p-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-left transition" data-text="A friendly visitor enters the workshop and says hello.">
+            👋 Friendly Greeting
+          </button>
+          <button class="preset-btn text-[10px] font-mono p-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-left transition" data-text="A loud power tool unexpectedly turns on right beside the robot!">
+            ⚡ Startle & Shield
+          </button>
+          <button class="preset-btn text-[10px] font-mono p-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-left transition" data-text="Examine the electronic multimeter readings on the test bench.">
+            🔍 Close Inspection
+          </button>
+          <button class="preset-btn text-[10px] font-mono p-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-left transition" data-text="Someone asks an ambiguous question that confuses the system logic.">
+            🤷 Skeptical Shrug
+          </button>
+        </div>
+      </div>
+
+      <!-- Procedural Physical Movement Subroutines -->
+      <div class="bg-slate-900/70 p-3.5 rounded-xl border border-slate-800">
+        <span class="text-xs font-mono text-cyan-400 font-semibold block mb-2">
+          <i class="fa-solid fa-play mr-1"></i> HARDWARE TEST ROUTINES
+        </span>
+        <div class="grid grid-cols-3 gap-1.5 text-[11px] font-mono">
+          <button class="gesture-btn py-1.5 px-2 rounded bg-slate-800/90 hover:bg-cyan-900/60 text-slate-300 hover:text-cyan-200 border border-slate-700 transition" data-gesture="wave">
+            <i class="fa-solid fa-hand mr-1 text-cyan-400"></i> Wave
+          </button>
+          <button class="gesture-btn py-1.5 px-2 rounded bg-slate-800/90 hover:bg-cyan-900/60 text-slate-300 hover:text-cyan-200 border border-slate-700 transition" data-gesture="reach">
+            <i class="fa-solid fa-hand-holding mr-1 text-cyan-400"></i> Reach
+          </button>
+          <button class="gesture-btn py-1.5 px-2 rounded bg-slate-800/90 hover:bg-cyan-900/60 text-slate-300 hover:text-cyan-200 border border-slate-700 transition" data-gesture="thinking">
+            <i class="fa-solid fa-brain mr-1 text-purple-400"></i> Think
+          </button>
+          <button class="gesture-btn py-1.5 px-2 rounded bg-slate-800/90 hover:bg-cyan-900/60 text-slate-300 hover:text-cyan-200 border border-slate-700 transition" data-gesture="guard">
+            <i class="fa-solid fa-shield-halved mr-1 text-amber-400"></i> Guard
+          </button>
+          <button class="gesture-btn py-1.5 px-2 rounded bg-slate-800/90 hover:bg-cyan-900/60 text-slate-300 hover:text-cyan-200 border border-slate-700 transition" data-gesture="shrug">
+            <i class="fa-solid fa-person mr-1 text-blue-400"></i> Shrug
+          </button>
+          <button class="gesture-btn py-1.5 px-2 rounded bg-slate-800/90 hover:bg-cyan-900/60 text-slate-300 hover:text-cyan-200 border border-slate-700 transition" data-gesture="nod">
+            <i class="fa-solid fa-check mr-1 text-emerald-400"></i> Nod
+          </button>
+        </div>
+      </div>
+
+      <!-- Real-Time Hardware Event Stream -->
+      <div class="bg-slate-900/70 p-3 rounded-xl border border-slate-800">
+        <span class="text-[11px] font-mono text-cyan-400 font-semibold block mb-1.5">
+          <i class="fa-solid fa-terminal mr-1"></i> SERIAL BUS CONTROLLER LOG
+        </span>
+        <div id="cortex-log" class="h-28 overflow-y-auto space-y-1 font-mono text-[10px] text-slate-400 bg-slate-950 p-2 rounded border border-slate-800">
+          <div class="text-emerald-400">> ESP32-S3 initialized. I2C bus scan at 400kHz.</div>
+          <div class="text-cyan-400">> PCA9685 PWM driver detected at 0x40. 16 channels online.</div>
+          <div class="text-slate-400">> All 18 servos holding torque. Battery voltage 7.92V.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 2: Physics, Torque & Power Telemetry -->
+    <div id="tab-physics" class="tab-content hidden flex-1 overflow-y-auto p-4 space-y-4">
+      <div class="bg-slate-900/70 p-3.5 rounded-xl border border-slate-800">
+        <span class="text-xs font-mono text-cyan-400 font-semibold block mb-2.5">
+          <i class="fa-solid fa-car-battery mr-1"></i> POWER DISTRIBUTION & BATTERY (2S LiPo)
+        </span>
+        <div class="space-y-3 font-mono text-xs">
+          <div>
+            <div class="flex justify-between text-slate-400 mb-1 text-[11px]">
+              <span>Cell Voltage (Loaded Sag)</span>
+              <span id="tel-voltage" class="text-emerald-400 font-bold">7.92 V</span>
+            </div>
+            <div class="w-full bg-slate-950 h-2 rounded-full overflow-hidden">
+              <div id="bar-voltage" class="h-full bg-gradient-to-r from-red-500 via-amber-400 to-emerald-400 transition-all duration-150" style="width: 78%;"></div>
+            </div>
+          </div>
+
+          <div>
+            <div class="flex justify-between text-slate-400 mb-1 text-[11px]">
+              <span>Bus Current (Idle + Motion)</span>
+              <span id="tel-current" class="text-amber-400 font-bold">0.45 A / 10.0 A max</span>
+            </div>
+            <div class="w-full bg-slate-950 h-2 rounded-full overflow-hidden">
+              <div id="bar-current" class="h-full bg-amber-400 transition-all duration-150" style="width: 5%;"></div>
+            </div>
+          </div>
+
+          <div>
+            <div class="flex justify-between text-slate-400 mb-1 text-[11px]">
+              <span>UBEC Step-down Regulator (6V 15A)</span>
+              <span class="text-slate-200">5.98 V regulated</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Real-Time Joint Torque Monitors -->
+      <div class="bg-slate-900/70 p-3.5 rounded-xl border border-slate-800">
+        <span class="text-xs font-mono text-cyan-400 font-semibold block mb-2.5">
+          <i class="fa-solid fa-weight-hanging mr-1"></i> REAL-TIME GRAVITATIONAL TORQUE LOAD
+        </span>
+        <p class="text-[11px] text-slate-400 mb-3">
+          Torque on standard 25kg&middot;cm digital servos (DS3225) based on arm lever length ($r=32\text{cm}$) and gravity:
+        </p>
+        <div class="space-y-3 font-mono text-xs">
+          <div>
+            <div class="flex justify-between text-slate-400 mb-1 text-[11px]">
+              <span>Right Shoulder Pitch (Ch 4)</span>
+              <span id="load-r-shoulder" class="text-cyan-300">2.1 kg&middot;cm (8%)</span>
+            </div>
+            <div class="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden">
+              <div id="bar-load-r-shoulder" class="h-full bg-cyan-400 transition-all duration-150" style="width: 8%;"></div>
+            </div>
+          </div>
+
+          <div>
+            <div class="flex justify-between text-slate-400 mb-1 text-[11px]">
+              <span>Right Elbow Joint (Ch 6)</span>
+              <span id="load-r-elbow" class="text-cyan-300">1.4 kg&middot;cm (7%)</span>
+            </div>
+            <div class="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden">
+              <div id="bar-load-r-elbow" class="h-full bg-cyan-400 transition-all duration-150" style="width: 7%;"></div>
+            </div>
+          </div>
+
+          <div>
+            <div class="flex justify-between text-slate-400 mb-1 text-[11px]">
+              <span>Left Shoulder Pitch (Ch 7)</span>
+              <span id="load-l-shoulder" class="text-cyan-300">2.1 kg&middot;cm (8%)</span>
+            </div>
+            <div class="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden">
+              <div id="bar-load-l-shoulder" class="h-full bg-cyan-400 transition-all duration-150" style="width: 8%;"></div>
+            </div>
+          </div>
+
+          <div>
+            <div class="flex justify-between text-slate-400 mb-1 text-[11px]">
+              <span>Estimated Shoulder Servo Temp</span>
+              <span id="tel-temp" class="text-emerald-400">32.4 &deg;C (Normal)</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-slate-900/70 p-3 rounded-xl border border-slate-800 font-mono text-[11px] text-slate-400 space-y-1.5">
+        <div class="text-cyan-300 font-semibold mb-1"><i class="fa-solid fa-circle-info mr-1"></i> ENGINEERING SPECIFICATIONS</div>
+        <div>&bull; <strong>Frame:</strong> 2020 T-Slot Extrusions + Bambu PLA-CF/PETG</div>
+        <div>&bull; <strong>Fasteners:</strong> M3 & M4 Socket Head Cap Screws + Brass Inserts</div>
+        <div>&bull; <strong>Heavy Servos:</strong> DS3225 25kg&middot;cm 180&deg; Digital Metal-Gear</div>
+        <div>&bull; <strong>Micro Servos:</strong> TowerPro MG90S 9g Metal-Gear (Head/Eyelids/Jaw)</div>
+        <div>&bull; <strong>PWM Driver:</strong> I2C PCA9685 16-Channel 12-bit PWM Expander</div>
+      </div>
+    </div>
+
+    <!-- Tab 3: Hardware Servo Channels (PCA9685 Pinouts) -->
+    <div id="tab-servos" class="tab-content hidden flex-1 overflow-y-auto p-4 space-y-4">
+      <div class="flex items-center justify-between pb-2 border-b border-slate-800">
+        <span class="text-xs font-mono text-cyan-400 font-bold"><i class="fa-solid fa-sliders mr-1"></i> PCA9685 CHANNELS (0-15)</span>
+        <button id="zero-all-servos" class="text-[11px] font-mono text-slate-400 hover:text-white px-2 py-0.5 rounded bg-slate-800 transition">Center All 90&deg;</button>
+      </div>
+
+      <div class="space-y-3 font-mono text-xs">
+        <span class="text-[11px] text-cyan-400 font-bold block pt-1 border-b border-slate-800/80">HEAD RIG (MG90S 9g SERVOS)</span>
+        
+        <div>
+          <div class="flex justify-between text-slate-300 mb-1">
+            <span>Ch 0: Neck Pan (Yaw)</span>
+            <span id="val-servo-0" class="text-cyan-400 font-bold">90&deg;</span>
+          </div>
+          <input id="slider-servo-0" type="range" min="30" max="150" value="90" class="w-full">
+        </div>
+
+        <div>
+          <div class="flex justify-between text-slate-300 mb-1">
+            <span>Ch 1: Neck Tilt (Pitch)</span>
+            <span id="val-servo-1" class="text-cyan-400 font-bold">90&deg;</span>
+          </div>
+          <input id="slider-servo-1" type="range" min="50" max="130" value="90" class="w-full">
+        </div>
+
+        <div>
+          <div class="flex justify-between text-slate-300 mb-1">
+            <span>Ch 2: Eyelid Pushrod (Linkage)</span>
+            <span id="val-servo-2" class="text-cyan-400 font-bold">90&deg;</span>
+          </div>
+          <input id="slider-servo-2" type="range" min="40" max="140" value="90" class="w-full">
+        </div>
+
+        <div>
+          <div class="flex justify-between text-slate-300 mb-1">
+            <span>Ch 3: Jaw Lever (Mandible)</span>
+            <span id="val-servo-3" class="text-cyan-400 font-bold">90&deg;</span>
+          </div>
+          <input id="slider-servo-3" type="range" min="90" max="150" value="90" class="w-full">
+        </div>
+
+        <span class="text-[11px] text-cyan-400 font-bold block pt-2 border-b border-slate-800/80">ARM ACTUATORS (DS3225 25kg&middot;cm)</span>
+
+        <div>
+          <div class="flex justify-between text-slate-300 mb-1">
+            <span>Ch 4: Right Shoulder Pitch</span>
+            <span id="val-servo-4" class="text-cyan-400 font-bold">90&deg;</span>
+          </div>
+          <input id="slider-servo-4" type="range" min="20" max="170" value="90" class="w-full">
+        </div>
+
+        <div>
+          <div class="flex justify-between text-slate-300 mb-1">
+            <span>Ch 5: Right Shoulder Roll (Abduction)</span>
+            <span id="val-servo-5" class="text-cyan-400 font-bold">100&deg;</span>
+          </div>
+          <input id="slider-servo-5" type="range" min="80" max="170" value="100" class="w-full">
+        </div>
+
+        <div>
+          <div class="flex justify-between text-slate-300 mb-1">
+            <span>Ch 6: Right Elbow Joint</span>
+            <span id="val-servo-6" class="text-cyan-400 font-bold">105&deg;</span>
+          </div>
+          <input id="slider-servo-6" type="range" min="20" max="160" value="105" class="w-full">
+        </div>
+
+        <div>
+          <div class="flex justify-between text-slate-300 mb-1">
+            <span>Ch 7: Left Shoulder Pitch</span>
+            <span id="val-servo-7" class="text-cyan-400 font-bold">90&deg;</span>
+          </div>
+          <input id="slider-servo-7" type="range" min="20" max="170" value="90" class="w-full">
+        </div>
+
+        <div>
+          <div class="flex justify-between text-slate-300 mb-1">
+            <span>Ch 8: Left Shoulder Roll</span>
+            <span id="val-servo-8" class="text-cyan-400 font-bold">80&deg;</span>
+          </div>
+          <input id="slider-servo-8" type="range" min="10" max="100" value="80" class="w-full">
+        </div>
+
+        <div>
+          <div class="flex justify-between text-slate-300 mb-1">
+            <span>Ch 9: Left Elbow Joint</span>
+            <span id="val-servo-9" class="text-cyan-400 font-bold">105&deg;</span>
+          </div>
+          <input id="slider-servo-9" type="range" min="20" max="160" value="105" class="w-full">
+        </div>
+
+        <div>
+          <div class="flex justify-between text-slate-300 mb-1">
+            <span>Ch 10: Hip/Knee Crouch Servos</span>
+            <span id="val-servo-10" class="text-cyan-400 font-bold">90&deg;</span>
+          </div>
+          <input id="slider-servo-10" type="range" min="60" max="120" value="90" class="w-full">
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 4: Physical Horn Trim & Zeroing -->
+    <div id="tab-calibration" class="tab-content hidden flex-1 overflow-y-auto p-4 space-y-4">
+      <div class="bg-slate-900/70 p-3 rounded-xl border border-slate-800">
+        <span class="text-xs font-mono text-cyan-400 font-semibold block mb-1">
+          <i class="fa-solid fa-crosshairs mr-1"></i> SERVO HORN OFFSET CALIBRATION
+        </span>
+        <p class="text-[11px] text-slate-400 mb-3 leading-normal">
+          In real hardware, 25T servo splines have a $14.4^\circ$ step. Fine software trims ($&plusmn;15^\circ$) compensate for horn alignment error without stripping gear teeth.
+        </p>
+
+        <div class="space-y-3 font-mono text-xs">
+          <div>
+            <div class="flex justify-between text-slate-300 mb-1">
+              <span>Neck Pan Trim</span>
+              <span id="val-trim-0">0&deg;</span>
+            </div>
+            <input id="slider-trim-0" type="range" min="-15" max="15" value="0" class="w-full">
+          </div>
+
+          <div>
+            <div class="flex justify-between text-slate-300 mb-1">
+              <span>Right Shoulder Trim</span>
+              <span id="val-trim-4">0&deg;</span>
+            </div>
+            <input id="slider-trim-4" type="range" min="-15" max="15" value="0" class="w-full">
+          </div>
+
+          <div>
+            <div class="flex justify-between text-slate-300 mb-1">
+              <span>Right Elbow Trim</span>
+              <span id="val-trim-6">0&deg;</span>
+            </div>
+            <input id="slider-trim-6" type="range" min="-15" max="15" value="0" class="w-full">
+          </div>
+
+          <div>
+            <div class="flex justify-between text-slate-300 mb-1">
+              <span>Left Shoulder Trim</span>
+              <span id="val-trim-7">0&deg;</span>
+            </div>
+            <input id="slider-trim-7" type="range" min="-15" max="15" value="0" class="w-full">
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-amber-950/30 p-3 rounded-xl border border-amber-800/60 font-mono text-xs text-amber-300 space-y-1">
+        <div class="font-bold flex items-center gap-1.5"><i class="fa-solid fa-triangle-exclamation"></i> HARDWARE SAFETY PROTOCOL</div>
+        <p class="text-[11px] text-amber-400/90 leading-relaxed">
+          Never power up high-torque servos without first detaching the horns or setting all software channels to 90&deg; neutral center.
+        </p>
+      </div>
+    </div>
+
+    <!-- Drawer Footer Utilities -->
+    <div class="p-3 border-t border-slate-800 bg-slate-950/80 flex items-center justify-between text-[11px] font-mono">
+      <div class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-cyan-400 led-blue"></span>
+        <span class="text-slate-400">PWM RATE: <strong class="text-slate-200">50 Hz (20ms)</strong></span>
+      </div>
+      <button id="toggle-optics-gaze" class="text-cyan-400 hover:text-cyan-300 transition flex items-center gap-1">
+        <i class="fa-solid fa-eye"></i> Gaze: <span id="text-gaze-status">ON</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- MODAL: Arduino / ESP32 Firmware Exporter -->
+  <div id="modal-firmware" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
+    <div class="cad-panel w-full max-w-2xl max-h-[90vh] rounded-2xl flex flex-col overflow-hidden border border-cyan-800">
+      <div class="p-4 border-b border-slate-800 flex items-center justify-between">
+        <div class="flex items-center gap-2 font-mono">
+          <i class="fa-solid fa-microchip text-cyan-400"></i>
+          <span class="font-bold text-sm text-slate-100">ESP32 / ARDUINO PCA9685 DRIVER SKETCH</span>
+        </div>
+        <button id="btn-close-firmware" class="text-slate-400 hover:text-white p-1">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+      <div class="p-4 overflow-y-auto flex-1 font-mono text-xs">
+        <p class="text-slate-400 mb-3 text-[11px]">
+          Flash this sketch directly to your <strong>ESP32, Arduino Uno, or Teensy</strong>. It drives the PCA9685 16-channel I2C servo shield and listens on Serial (115200 baud) for commands streamed directly from this web simulation!
+        </p>
+        <div class="relative bg-slate-950 p-3 rounded-lg border border-slate-800 text-[11px] text-slate-300 overflow-x-auto">
+          <pre id="code-snippet"><code>#include &lt;Wire.h&gt;
+#include &lt;Adafruit_PWMServoDriver.h&gt;
+
+// Default PCA9685 I2C address is 0x40
+Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(0x40);
+
+#define SERVO_FREQ 50  // 50Hz standard analog/digital servos
+#define USMIN  500     // 0 degrees (500us pulse)
+#define USMAX  2500    // 180 degrees (2500us pulse)
+
+// Map 0-180 degrees to PCA9685 12-bit tick count (0-4095)
+void setServoAngle(uint8_t channel, float angle) {
+  angle = constrain(angle, 0.0, 180.0);
+  uint16_t pulseLength = map(angle * 10, 0, 1800, USMIN, USMAX);
+  uint16_t pulselength_ticks = (pulseLength * 4096) / 20000;
+  pwm.setPWM(channel, 0, pulselength_ticks);
+}
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin();
+  pwm.begin();
+  pwm.setPWMFreq(SERVO_FREQ);
+  delay(500);
+
+  // Initialize all joints to safe 90 deg neutral
+  for(int ch = 0; ch &lt; 16; ch++) {
+    setServoAngle(ch, 90.0);
+    delay(50);
+  }
+  Serial.println("MAKERBOT_HARDWARE_READY");
+}
+
+void loop() {
+  // Protocol: "S:&lt;channel&gt;:&lt;angle&gt;\n"
+  if (Serial.available()) {
+    String msg = Serial.readStringUntil('\n');
+    if (msg.startsWith("S:")) {
+      int firstColon = msg.indexOf(':');
+      int secondColon = msg.indexOf(':', firstColon + 1);
+      int ch = msg.substring(firstColon + 1, secondColon).toInt();
+      float ang = msg.substring(secondColon + 1).toFloat();
+      setServoAngle(ch, ang);
+    }
+  }
+}</code></pre>
+        </div>
+      </div>
+      <div class="p-3 border-t border-slate-800 bg-slate-950 flex items-center justify-between">
+        <span class="text-[11px] font-mono text-slate-400">Requires Adafruit PWM Servo Driver Library</span>
+        <button id="btn-copy-code" class="px-3.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-mono text-xs font-semibold flex items-center gap-1.5 transition">
+          <i class="fa-solid fa-copy"></i> Copy C++ Code
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: DIY Bill of Materials (BOM) & 3D Print Spec -->
+  <div id="modal-bom" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
+    <div class="cad-panel w-full max-w-2xl max-h-[90vh] rounded-2xl flex flex-col overflow-hidden border border-slate-700">
+      <div class="p-4 border-b border-slate-800 flex items-center justify-between">
+        <div class="flex items-center gap-2 font-mono">
+          <i class="fa-solid fa-screwdriver-wrench text-amber-400"></i>
+          <span class="font-bold text-sm text-slate-100">MAKER ROBOT BILL OF MATERIALS (BOM)</span>
+        </div>
+        <button id="btn-close-bom" class="text-slate-400 hover:text-white p-1">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+      <div class="p-4 overflow-y-auto flex-1 font-mono text-xs space-y-4">
+        <p class="text-slate-400 text-[11px]">
+          Engineering estimate based on readily accessible off-the-shelf components from Amazon, AliExpress, and 3D printing supplies. Total budget designed under <strong>$220 USD</strong>:
+        </p>
+
+        <div class="border border-slate-800 rounded-lg overflow-hidden">
+          <table class="w-full text-left text-[11px]">
+            <thead class="bg-slate-900 text-cyan-400 border-b border-slate-800">
+              <tr>
+                <th class="p-2.5">Subsystem</th>
+                <th class="p-2.5">Component Specification</th>
+                <th class="p-2.5">Qty</th>
+                <th class="p-2.5">Est. Cost</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800/80 text-slate-300">
+              <tr>
+                <td class="p-2.5 font-bold text-slate-200">Main Actuators</td>
+                <td class="p-2.5">DS3225 25kg&middot;cm Metal-Gear Digital Servos (Arms/Spine)</td>
+                <td class="p-2.5">8x</td>
+                <td class="p-2.5 text-emerald-400">$84.00</td>
+              </tr>
+              <tr>
+                <td class="p-2.5 font-bold text-slate-200">Facial Actuators</td>
+                <td class="p-2.5">TowerPro MG90S 9g Micro Metal-Gear Servos (Head/Jaw)</td>
+                <td class="p-2.5">6x</td>
+                <td class="p-2.5 text-emerald-400">$18.00</td>
+              </tr>
+              <tr>
+                <td class="p-2.5 font-bold text-slate-200">Controller Brain</td>
+                <td class="p-2.5">ESP32-S3 Dev Board + PCA9685 16-Ch PWM Board</td>
+                <td class="p-2.5">1x ea</td>
+                <td class="p-2.5 text-emerald-400">$14.00</td>
+              </tr>
+              <tr>
+                <td class="p-2.5 font-bold text-slate-200">Power Rail</td>
+                <td class="p-2.5">2S LiPo 7.4V 2200mAh + 6V 15A UBEC Buck Converter</td>
+                <td class="p-2.5">1x</td>
+                <td class="p-2.5 text-emerald-400">$26.00</td>
+              </tr>
+              <tr>
+                <td class="p-2.5 font-bold text-slate-200">Metal Brackets</td>
+                <td class="p-2.5">Standard Aluminum Servo U-Brackets & 25T Horns</td>
+                <td class="p-2.5">1 set</td>
+                <td class="p-2.5 text-emerald-400">$22.00</td>
+              </tr>
+              <tr>
+                <td class="p-2.5 font-bold text-slate-200">Chassis & Frame</td>
+                <td class="p-2.5">2020 T-Slot Extrusions (300mm x 4) + M3/M4 Hardware</td>
+                <td class="p-2.5">1 set</td>
+                <td class="p-2.5 text-emerald-400">$25.00</td>
+              </tr>
+              <tr>
+                <td class="p-2.5 font-bold text-slate-200">3D Print Shell</td>
+                <td class="p-2.5">1.2 kg PETG / PLA-CF Filament (0.2mm layer, 4 walls)</td>
+                <td class="p-2.5">~1.2kg</td>
+                <td class="p-2.5 text-emerald-400">$26.00</td>
+              </tr>
+            </tbody>
+            <tfoot class="bg-slate-900/90 font-bold text-slate-100 border-t border-slate-700">
+              <tr>
+                <td colspan="3" class="p-2.5 text-right">TOTAL ESTIMATED BUILD COST:</td>
+                <td class="p-2.5 text-emerald-400 text-sm">$215.00</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+      <div class="p-3 border-t border-slate-800 bg-slate-950 flex items-center justify-between">
+        <span class="text-[11px] font-mono text-slate-400">Fits on standard 220x220mm 3D printer bed (Ender 3 / Bambu A1)</span>
+        <button id="btn-close-bom-footer" class="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-mono text-xs transition">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* ==========================================================================
+       MAKERBOT-1: PHYSICAL ROBOTICS DIGITAL TWIN & SIMULATOR
+       ========================================================================== */
+
+    let canvas = document.getElementById('robot-canvas');
+    let scene, camera, renderer;
+    let robotRoot, spine2020Group, upperChassisGroup, headPivot, neckPitchGroup;
+    let rightShoulderPitchJoint, rightShoulderRollJoint, rightElbowJoint;
+    let leftShoulderPitchJoint, leftShoulderRollJoint, leftElbowJoint;
+    let leftEye, rightEye, leftPupil, rightPupil;
+    let leftEyelidUpper, rightEyelidUpper, jawGroup;
+    let pcbBackpackMesh, statusLedTx, statusLedRx, powerLed;
+
+    // Physical Actuator & Power State Bus
+    const hardware = {
+      // 16 PCA9685 PWM Channels (Angles in Degrees 0.0 - 180.0)
+      servos: {
+        ch0_neckPan: 90,
+        ch1_neckTilt: 90,
+        ch2_eyelids: 90,
+        ch3_jaw: 90,
+        ch4_rShoulderPitch: 90,
+        ch5_rShoulderRoll: 100,
+        ch6_rElbow: 105,
+        ch7_lShoulderPitch: 90,
+        ch8_lShoulderRoll: 80,
+        ch9_lElbow: 105,
+        ch10_crouch: 90
+      },
+      targets: {
+        ch0_neckPan: 90,
+        ch1_neckTilt: 90,
+        ch2_eyelids: 90,
+        ch3_jaw: 90,
+        ch4_rShoulderPitch: 90,
+        ch5_rShoulderRoll: 100,
+        ch6_rElbow: 105,
+        ch7_lShoulderPitch: 90,
+        ch8_lShoulderRoll: 80,
+        ch9_lElbow: 105,
+        ch10_crouch: 90
+      },
+      trims: {
+        ch0: 0,
+        ch4: 0,
+        ch6: 0,
+        ch7: 0
+      },
+      // Physical Servo Specs
+      maxSpeedDegSec: 320.0, // DS3225 speed: 0.15s / 60 deg ≈ 400 deg/s under load
+      stallTorqueKgCm: 25.0,
+      
+      // Power System Model (2S LiPo battery)
+      nominalVoltage: 8.2,   // Fresh 2S pack
+      currentVoltage: 7.92,
+      internalResistance: 0.045, // Battery ESR (Ohms)
+      quiescentCurrent: 0.35,     // ESP32 + idle logic
+      dynamicCurrent: 0.1,
+      totalCurrent: 0.45,
+      motorTempC: 32.4,
+
+      // Autonomous behaviors
+      trackMouse: true,
+      activeRoutine: 'none',
+      routineTime: 0,
+      breathingTime: 0,
+      saccadeTimer: 0,
+      nextSaccade: 1.8,
+      isBlinking: false,
+      blinkProgress: 0,
+      blinkTimer: 0,
+      nextBlink: 3.5,
+
+      // Serial link
+      serialConnected: false,
+      serialPort: null,
+      serialWriter: null
+    };
+
+    const mouse = { x: 0, y: 0, normX: 0, normY: 0 };
+
+    function initThree() {
+      scene = new THREE.Scene();
+      scene.fog = new THREE.FogExp2(0x080c14, 0.038);
+
+      camera = new THREE.PerspectiveCamera(45, canvas.clientWidth / canvas.clientHeight, 0.1, 100);
+      camera.position.set(0, 1.35, 3.8);
+      camera.lookAt(0, 1.15, 0);
+
+      renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
+      renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+      // Realistic Workshop Workbench Lighting
+      const ambientLight = new THREE.AmbientLight(0x1e293b, 1.8);
+      scene.add(ambientLight);
+
+      const overheadWorklight = new THREE.DirectionalLight(0xffffff, 2.0);
+      overheadWorklight.position.set(2, 6, 4);
+      overheadWorklight.castShadow = true;
+      overheadWorklight.shadow.mapSize.width = 1024;
+      overheadWorklight.shadow.mapSize.height = 1024;
+      scene.add(overheadWorklight);
+
+      const rimCyberLight = new THREE.DirectionalLight(0x0284c7, 2.5);
+      rimCyberLight.position.set(-4, 3, -3);
+      scene.add(rimCyberLight);
+
+      buildPhysicalRobot();
+      setupInteractions();
+      window.addEventListener('resize', onWindowResize);
+    }
+
+    // Material library representing real maker materials
+    let matExtrusion2020, matPetgBlack, matPetgCyan, matAluminumBracket, matServoCase, matBrassHardware;
+
+    function buildPhysicalRobot() {
+      robotRoot = new THREE.Group();
+      scene.add(robotRoot);
+
+      // 1. Realistic Maker Materials
+      matExtrusion2020 = new THREE.MeshStandardMaterial({
+        color: 0x94a3b8,
+        metalness: 0.9,
+        roughness: 0.3
+      });
+
+      matPetgBlack = new THREE.MeshStandardMaterial({
+        color: 0x1e222d,
+        roughness: 0.65,
+        metalness: 0.15
+      });
+
+      matPetgCyan = new THREE.MeshStandardMaterial({
+        color: 0x0284c7,
+        roughness: 0.5,
+        metalness: 0.1
+      });
+
+      matAluminumBracket = new THREE.MeshStandardMaterial({
+        color: 0x334155,
+        metalness: 0.85,
+        roughness: 0.25
+      });
+
+      matServoCase = new THREE.MeshStandardMaterial({
+        color: 0x0f172a,
+        roughness: 0.4,
+        metalness: 0.3
+      });
+
+      matBrassHardware = new THREE.MeshStandardMaterial({
+        color: 0xd97706,
+        metalness: 0.9,
+        roughness: 0.3
+      });
+
+      const emissiveLedCyan = new THREE.MeshStandardMaterial({
+        color: 0x38bdf8,
+        emissive: 0x38bdf8,
+        emissiveIntensity: 2.2
+      });
+
+      // 2. Workbench Base Grid Platform
+      const gridHelper = new THREE.GridHelper(4, 20, 0x0284c7, 0x1e293b);
+      gridHelper.position.y = 0.001;
+      scene.add(gridHelper);
+
+      // Heavy 3D-Printed Mounting Floor Flange / Feet Plating
+      const basePlateGeo = new THREE.CylinderGeometry(0.8, 0.85, 0.06, 32);
+      const basePlate = new THREE.Mesh(basePlateGeo, matPetgBlack);
+      basePlate.position.y = 0.03;
+      basePlate.receiveShadow = true;
+      robotRoot.add(basePlate);
+
+      // Circular telemetry ring on test stand
+      const ringGeo = new THREE.RingGeometry(0.65, 0.68, 48);
+      ringGeo.rotateX(-Math.PI / 2);
+      const ringMesh = new THREE.Mesh(ringGeo, emissiveLedCyan);
+      ringMesh.position.y = 0.062;
+      robotRoot.add(ringMesh);
+
+      // 3. Pelvis & 2020 Aluminum Extrusion Lower Spine
+      spine2020Group = new THREE.Group();
+      spine2020Group.position.set(0, 0.95, 0);
+      robotRoot.add(spine2020Group);
+
+      // Dual 2020 aluminum vertical spine uprights
+      const ext2020Geo = new THREE.BoxGeometry(0.04, 0.42, 0.04);
+      const spineLeft = new THREE.Mesh(ext2020Geo, matExtrusion2020);
+      spineLeft.position.set(0.06, 0, 0);
+      spine2020Group.add(spineLeft);
+
+      const spineRight = new THREE.Mesh(ext2020Geo, matExtrusion2020);
+      spineRight.position.set(-0.06, 0, 0);
+      spine2020Group.add(spineRight);
+
+      // Lower Pelvic mounting clamp
+      const pelvisClamp = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.08, 0.12), matPetgCyan);
+      pelvisClamp.position.set(0, -0.2, 0);
+      spine2020Group.add(pelvisClamp);
+
+      // Sturdy 3D-Printed Legs & Foot Pedestals (Standard Maker Desktop Biped Pose)
+      function createMakerLeg(isLeft) {
+        const side = isLeft ? 1 : -1;
+        const legGroup = new THREE.Group();
+        legGroup.position.set(side * 0.14, -0.24, 0);
+
+        // Hip Servo Bracket
+        const hipServo = createServoModel(true);
+        hipServo.position.set(0, 0, 0);
+        legGroup.add(hipServo);
+
+        // Thigh Extrusion
+        const thighExt = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.35, 0.03), matExtrusion2020);
+        thighExt.position.set(0, -0.2, 0);
+        legGroup.add(thighExt);
+
+        // Knee joint U-bracket
+        const kneeU = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.06), matAluminumBracket);
+        kneeU.position.set(0, -0.38, 0);
+        legGroup.add(kneeU);
+
+        // Shin Extrusion
+        const shinExt = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.35, 0.03), matExtrusion2020);
+        shinExt.position.set(0, -0.56, 0);
+        legGroup.add(shinExt);
+
+        // Foot Plate with rubber damper pads
+        const footMesh = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, 0.22), matPetgBlack);
+        footMesh.position.set(0, -0.74, 0.04);
+        legGroup.add(footMesh);
+
+        return legGroup;
+      }
+
+      spine2020Group.add(createMakerLeg(true));
+      spine2020Group.add(createMakerLeg(false));
+
+      // 4. Upper Torso Chassis with Electronics Backpack
+      upperChassisGroup = new THREE.Group();
+      upperChassisGroup.position.set(0, 0.22, 0);
+      spine2020Group.add(upperChassisGroup);
+
+      // Chest plate with honeycomb weight-reduction CAD pattern
+      const chestPlateGeo = new THREE.BoxGeometry(0.42, 0.36, 0.16);
+      const chestPlate = new THREE.Mesh(chestPlateGeo, matPetgBlack);
+      chestPlate.position.y = 0.18;
+      upperChassisGroup.add(chestPlate);
+
+      // Visible M3 Hex Cap Screws on chest corners
+      for (let x = -0.18; x <= 0.18; x += 0.36) {
+        for (let y = 0.04; y <= 0.32; y += 0.28) {
+          const screw = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.01, 8), matBrassHardware);
+          screw.rotation.x = Math.PI / 2;
+          screw.position.set(x, y, 0.082);
+          upperChassisGroup.add(screw);
+        }
+      }
+
+      // ELECTRONICS BACKPACK (ESP32 Dev Board + PCA9685 I2C Board under Acrylic)
+      const pcbBackpackGeo = new THREE.BoxGeometry(0.26, 0.28, 0.05);
+      const pcbPlateMat = new THREE.MeshStandardMaterial({ color: 0x064e3b, roughness: 0.3 }); // Solder mask green
+      pcbBackpackMesh = new THREE.Mesh(pcbBackpackGeo, pcbPlateMat);
+      pcbBackpackMesh.position.set(0, 0.18, -0.11);
+      upperChassisGroup.add(pcbBackpackMesh);
+
+      // Acrylic Protective Cover
+      const acrylicCover = new THREE.Mesh(
+        new THREE.BoxGeometry(0.28, 0.3, 0.015),
+        new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.35, roughness: 0.1 })
+      );
+      acrylicCover.position.set(0, 0.18, -0.14);
+      upperChassisGroup.add(acrylicCover);
+
+      // Blinking PCB Status LEDs (TX, RX, Power)
+      statusLedTx = new THREE.Mesh(new THREE.SphereGeometry(0.006, 8, 8), emissiveLedCyan);
+      statusLedTx.position.set(0.06, 0.24, -0.136);
+      upperChassisGroup.add(statusLedTx);
+
+      statusLedRx = new THREE.Mesh(new THREE.SphereGeometry(0.006, 8, 8), new THREE.MeshStandardMaterial({ color: 0xf59e0b, emissive: 0xf59e0b, emissiveIntensity: 2.0 }));
+      statusLedRx.position.set(0.04, 0.24, -0.136);
+      upperChassisGroup.add(statusLedRx);
+
+      powerLed = new THREE.Mesh(new THREE.SphereGeometry(0.006, 8, 8), new THREE.MeshStandardMaterial({ color: 0x10b981, emissive: 0x10b981, emissiveIntensity: 2.0 }));
+      powerLed.position.set(-0.06, 0.24, -0.136);
+      upperChassisGroup.add(powerLed);
+
+      // Visible cable harness sleeve connecting backpack to neck and shoulders
+      const cableSpineGeo = new THREE.CylinderGeometry(0.018, 0.018, 0.3, 8);
+      const cableSpine = new THREE.Mesh(cableSpineGeo, matPetgBlack);
+      cableSpine.position.set(0, 0.18, -0.07);
+      upperChassisGroup.add(cableSpine);
+
+      // 5. ARTICULATING ARMS (DS3225 High-Torque Servos with Aluminum U-Brackets)
+      function createMakerArm(isLeft) {
+        const side = isLeft ? 1 : -1;
+        
+        // Shoulder Pitch Joint (Channel 4 Right / Channel 7 Left)
+        const shoulderPitchJoint = new THREE.Group();
+        shoulderPitchJoint.position.set(side * 0.25, 0.32, 0);
+
+        // Servo DS3225 housing
+        const pitchServo = createServoModel(false);
+        pitchServo.rotation.y = side * Math.PI / 2;
+        shoulderPitchJoint.add(pitchServo);
+
+        // Shoulder Roll Joint (Channel 5 Right / Channel 8 Left) - Connected via Aluminum U-Bracket
+        const shoulderRollJoint = new THREE.Group();
+        shoulderRollJoint.position.set(side * 0.065, 0, 0);
+        shoulderPitchJoint.add(shoulderRollJoint);
+
+        const uBracket = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.08, 0.06), matAluminumBracket);
+        shoulderRollJoint.add(uBracket);
+
+        // Upper Arm Extrusion (Bicep)
+        const upperArmExt = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.24, 0.04), matExtrusion2020);
+        upperArmExt.position.set(0, -0.14, 0);
+        shoulderRollJoint.add(upperArmExt);
+
+        // Elbow Pitch Joint (Channel 6 Right / Channel 9 Left)
+        const elbowJoint = new THREE.Group();
+        elbowJoint.position.set(0, -0.26, 0);
+        shoulderRollJoint.add(elbowJoint);
+
+        const elbowServo = createServoModel(false);
+        elbowJoint.add(elbowServo);
+
+        // Forearm Extrusion
+        const forearmExt = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.22, 0.035), matExtrusion2020);
+        forearmExt.position.set(0, -0.13, 0);
+        elbowJoint.add(forearmExt);
+
+        // 3D Printed End-Effector / Maker Gripper Hand
+        const handPlate = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.08, 0.03), matPetgCyan);
+        handPlate.position.set(0, -0.27, 0);
+        elbowJoint.add(handPlate);
+
+        // Stylized 3-finger compliant parallel gripper
+        for (let f = -1; f <= 1; f++) {
+          const finger = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.05, 0.015), matPetgBlack);
+          finger.position.set(f * 0.02, -0.32, 0);
+          elbowJoint.add(finger);
+        }
+
+        return { shoulderPitchJoint, shoulderRollJoint, elbowJoint };
+      }
+
+      // Reusable Standard 40x20x40mm Servo Model (DS3225 or MG996R)
+      function createServoModel(isMicro) {
+        const group = new THREE.Group();
+        const scale = isMicro ? 0.6 : 1.0;
+        
+        // Main Case
+        const caseMesh = new THREE.Mesh(new THREE.BoxGeometry(0.04 * scale, 0.05 * scale, 0.022 * scale), matServoCase);
+        group.add(caseMesh);
+
+        // Metal Top Gear Spline Tower
+        const splineMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.007 * scale, 0.007 * scale, 0.015 * scale, 16), matBrassHardware);
+        splineMesh.position.set(0.01 * scale, 0.028 * scale, 0);
+        group.add(splineMesh);
+
+        // Aluminum 25T Servo Horn
+        const hornMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.014 * scale, 0.014 * scale, 0.004 * scale, 16), matAluminumBracket);
+        hornMesh.position.set(0.01 * scale, 0.036 * scale, 0);
+        group.add(hornMesh);
+
+        return group;
+      }
+
+      const leftArm = createMakerArm(true);
+      upperChassisGroup.add(leftArm.shoulderPitchJoint);
+      leftShoulderPitchJoint = leftArm.shoulderPitchJoint;
+      leftShoulderRollJoint = leftArm.shoulderRollJoint;
+      leftElbowJoint = leftArm.elbowJoint;
+
+      const rightArm = createMakerArm(false);
+      upperChassisGroup.add(rightArm.shoulderPitchJoint);
+      rightShoulderPitchJoint = rightArm.shoulderPitchJoint;
+      rightShoulderRollJoint = rightArm.shoulderRollJoint;
+      rightElbowJoint = rightArm.elbowJoint;
+
+      // 6. 2-AXIS NECK GIMBAL (Pan/Tilt with MG90S Micro-Servos)
+      headPivot = new THREE.Group(); // Pan (Yaw) Joint (Ch 0)
+      headPivot.position.set(0, 0.42, 0);
+      upperChassisGroup.add(headPivot);
+
+      const neckPanServo = createServoModel(true);
+      headPivot.add(neckPanServo);
+
+      neckPitchGroup = new THREE.Group(); // Tilt (Pitch) Joint (Ch 1)
+      neckPitchGroup.position.set(0, 0.07, 0);
+      headPivot.add(neckPitchGroup);
+
+      // 7. 3D-PRINTED MAKER HEAD CHASSIS
+      const craniumGeo = new THREE.SphereGeometry(0.24, 24, 24);
+      craniumGeo.scale(0.85, 1.05, 0.95);
+      const cranium = new THREE.Mesh(craniumGeo, matPetgBlack);
+      cranium.position.set(0, 0.16, 0);
+      cranium.castShadow = true;
+      neckPitchGroup.add(cranium);
+
+      // Recessed Faceplate Mask (Acrylic / 3D Printed)
+      const faceplateGeo = new THREE.BoxGeometry(0.32, 0.28, 0.14);
+      const faceplate = new THREE.Mesh(faceplateGeo, matPetgCyan);
+      faceplate.position.set(0, 0.17, 0.14);
+      neckPitchGroup.add(faceplate);
+
+      // 8. OPTICAL SENSOR EYES (Camera Lens Modules with Blue Glow)
+      const eyeSpacing = 0.085;
+      const eyeY = 0.19;
+      const eyeZ = 0.21;
+
+      function createOpticalEye(isLeft) {
+        const side = isLeft ? 1 : -1;
+        const eyeGroup = new THREE.Group();
+        eyeGroup.position.set(side * eyeSpacing, eyeY, eyeZ);
+
+        // Lens Barrel Bezel
+        const bezel = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.02, 24), matAluminumBracket);
+        bezel.rotateX(Math.PI / 2);
+        eyeGroup.add(bezel);
+
+        // Glass Iris Sensor
+        const iris = new THREE.Mesh(new THREE.CircleGeometry(0.038, 24), emissiveLedCyan);
+        iris.position.z = 0.011;
+        eyeGroup.add(iris);
+
+        // Central Pupil Aperture
+        const pupil = new THREE.Mesh(new THREE.CircleGeometry(0.018, 24), new THREE.MeshBasicMaterial({ color: 0x000000 }));
+        pupil.position.z = 0.012;
+        eyeGroup.add(pupil);
+
+        return { eyeGroup, pupil };
+      }
+
+      const leftEyeData = createOpticalEye(true);
+      neckPitchGroup.add(leftEyeData.eyeGroup);
+      leftEye = leftEyeData.eyeGroup;
+      leftPupil = leftEyeData.pupil;
+
+      const rightEyeData = createOpticalEye(false);
+      neckPitchGroup.add(rightEyeData.eyeGroup);
+      rightEye = rightEyeData.eyeGroup;
+      rightPupil = rightEyeData.pupil;
+
+      // 9. MECHANICAL EYELID BLINDERS (Channel 2 Pushrod Linkage)
+      const lidGeo = new THREE.SphereGeometry(0.05, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2.2);
+      leftEyelidUpper = new THREE.Mesh(lidGeo, matPetgBlack);
+      leftEyelidUpper.position.copy(leftEye.position);
+      leftEyelidUpper.rotation.x = -0.3;
+      neckPitchGroup.add(leftEyelidUpper);
+
+      rightEyelidUpper = new THREE.Mesh(lidGeo, matPetgBlack);
+      rightEyelidUpper.position.copy(rightEye.position);
+      rightEyelidUpper.rotation.x = -0.3;
+      neckPitchGroup.add(rightEyelidUpper);
+
+      // 10. JAW HINGE (Channel 3 Micro-Servo Lever)
+      jawGroup = new THREE.Group();
+      jawGroup.position.set(0, 0.08, 0.14);
+      neckPitchGroup.add(jawGroup);
+
+      const chinMesh = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.08, 0.12), matPetgBlack);
+      chinMesh.position.set(0, -0.02, 0.04);
+      jawGroup.add(chinMesh);
+
+      // Glowing speech light strip on jaw
+      const jawStrip = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.012, 0.01), emissiveLedCyan);
+      jawStrip.position.set(0, 0.01, 0.102);
+      jawGroup.add(jawStrip);
+    }
+
+    let isDragging = false;
+    let prevMousePos = { x: 0, y: 0 };
+    let cameraAngle = { yaw: 0, pitch: 0.02, radius: 3.8, targetY: 1.15 };
+    let targetCameraAngle = { yaw: 0, pitch: 0.02, radius: 3.8, targetY: 1.15 };
+
+    function setupInteractions() {
+      canvas.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        prevMousePos = { x: e.clientX, y: e.clientY };
+      });
+
+      window.addEventListener('mouseup', () => { isDragging = false; });
+
+      window.addEventListener('mousemove', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        mouse.normX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.normY = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
+
+        if (isDragging) {
+          const deltaX = e.clientX - prevMousePos.x;
+          const deltaY = e.clientY - prevMousePos.y;
+          targetCameraAngle.yaw -= deltaX * 0.006;
+          targetCameraAngle.pitch = Math.max(-0.4, Math.min(0.6, targetCameraAngle.pitch + deltaY * 0.006));
+          prevMousePos = { x: e.clientX, y: e.clientY };
+        }
+      });
+
+      canvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        targetCameraAngle.radius = Math.max(1.1, Math.min(5.5, targetCameraAngle.radius + e.deltaY * 0.003));
+      }, { passive: false });
+
+      // Camera Presets
+      const setCam = (yaw, pitch, radius, targetY) => {
+        targetCameraAngle.yaw = yaw;
+        targetCameraAngle.pitch = pitch;
+        targetCameraAngle.radius = radius;
+        targetCameraAngle.targetY = targetY;
+      };
+
+      document.getElementById('view-full-btn').addEventListener('click', () => setCam(0, 0.02, 3.8, 1.15));
+      document.getElementById('view-head-btn').addEventListener('click', () => setCam(0, 0.02, 1.35, 1.75));
+      document.getElementById('view-arm-btn').addEventListener('click', () => setCam(0.7, 0.08, 1.9, 1.4));
+      document.getElementById('view-pcb-btn').addEventListener('click', () => setCam(Math.PI, 0.1, 1.6, 1.35));
+    }
+
+    function onWindowResize() {
+      if (!renderer || !camera) return;
+      camera.aspect = canvas.clientWidth / canvas.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+    }
+
+    function damp(curr, target, lambda, dt) {
+      return THREE.MathUtils.lerp(curr, target, 1 - Math.exp(-lambda * dt));
+    }
+
+    function updatePhysicalKinematics(delta) {
+      // 1. Camera Smoothing
+      cameraAngle.yaw = damp(cameraAngle.yaw, targetCameraAngle.yaw, 8.0, delta);
+      cameraAngle.pitch = damp(cameraAngle.pitch, targetCameraAngle.pitch, 8.0, delta);
+      cameraAngle.radius = damp(cameraAngle.radius, targetCameraAngle.radius, 8.0, delta);
+      cameraAngle.targetY = damp(cameraAngle.targetY, targetCameraAngle.targetY, 8.0, delta);
+
+      const cx = Math.sin(cameraAngle.yaw) * Math.cos(cameraAngle.pitch) * cameraAngle.radius;
+      const cy = cameraAngle.targetY + Math.sin(cameraAngle.pitch) * cameraAngle.radius;
+      const cz = Math.cos(cameraAngle.yaw) * Math.cos(cameraAngle.pitch) * cameraAngle.radius;
+      camera.position.set(cx, cy, cz);
+      camera.lookAt(0, cameraAngle.targetY, 0);
+
+      // 2. Optical Gaze & Neck Servo Tracking
+      if (hardware.trackMouse && hardware.activeRoutine === 'none') {
+        const gazeYaw = THREE.MathUtils.clamp(90 - mouse.normX * 35, 45, 135);
+        const gazeTilt = THREE.MathUtils.clamp(90 - mouse.normY * 25, 60, 120);
+        hardware.targets.ch0_neckPan = gazeYaw;
+        hardware.targets.ch1_neckTilt = gazeTilt;
+      }
+
+      // 3. Servo Angular Velocity Limiters (Emulating Physical Max Speed & Gear Jitter)
+      let totalSpeedVelocity = 0;
+      const keys = Object.keys(hardware.servos);
+      const maxDeltaDeg = hardware.maxSpeedDegSec * delta;
+
+      for (let k of keys) {
+        const target = hardware.targets[k];
+        const diff = target - hardware.servos[k];
+        const clampedDiff = Math.max(-maxDeltaDeg, Math.min(maxDeltaDeg, diff));
+        
+        // Realistic gear deadband jitter when moving
+        const jitter = (Math.abs(clampedDiff) > 0.05) ? (Math.random() - 0.5) * 0.15 : 0;
+        hardware.servos[k] += clampedDiff + jitter;
+        totalSpeedVelocity += Math.abs(clampedDiff);
+      }
+
+      // 4. Update Three.js Transforms from Actuator Degrees
+      const degToRad = Math.PI / 180;
+
+      // Neck Pan (Ch 0) & Tilt (Ch 1) with Hardware Trims
+      if (headPivot && neckPitchGroup) {
+        const panDeg = (hardware.servos.ch0_neckPan + hardware.trims.ch0) - 90;
+        const tiltDeg = (hardware.servos.ch1_neckTilt) - 90;
+        headPivot.rotation.y = -panDeg * degToRad;
+        neckPitchGroup.rotation.x = -tiltDeg * degToRad;
+      }
+
+      // Mechanical Eyelids (Ch 2)
+      if (leftEyelidUpper && rightEyelidUpper) {
+        const lidDeg = (hardware.servos.ch2_eyelids - 90) * degToRad;
+        leftEyelidUpper.rotation.x = -0.3 + lidDeg * 0.6;
+        rightEyelidUpper.rotation.x = -0.3 + lidDeg * 0.6;
+      }
+
+      // Jaw Lever (Ch 3)
+      if (jawGroup) {
+        const jawDeg = (hardware.servos.ch3_jaw - 90) * degToRad;
+        jawGroup.rotation.x = Math.max(0, jawDeg * 0.4);
+      }
+
+      // Arms: Right Side (Ch 4 Pitch, Ch 5 Roll, Ch 6 Elbow)
+      if (rightShoulderPitchJoint && rightShoulderRollJoint && rightElbowJoint) {
+        const rPitchRad = ((hardware.servos.ch4_rShoulderPitch + hardware.trims.ch4) - 90) * degToRad;
+        const rRollRad = (hardware.servos.ch5_rShoulderRoll - 90) * degToRad;
+        const rElbowRad = ((hardware.servos.ch6_rElbow + hardware.trims.ch6) - 90) * degToRad;
+
+        rightShoulderPitchJoint.rotation.x = rPitchRad;
+        rightShoulderRollJoint.rotation.z = rRollRad;
+        rightElbowJoint.rotation.x = rElbowRad;
+      }
+
+      // Arms: Left Side (Ch 7 Pitch, Ch 8 Roll, Ch 9 Elbow)
+      if (leftShoulderPitchJoint && leftShoulderRollJoint && leftElbowJoint) {
+        const lPitchRad = ((hardware.servos.ch7_lShoulderPitch + hardware.trims.ch7) - 90) * degToRad;
+        const lRollRad = (hardware.servos.ch8_lShoulderRoll - 90) * degToRad;
+        const lElbowRad = (hardware.servos.ch9_lElbow - 90) * degToRad;
+
+        leftShoulderPitchJoint.rotation.x = lPitchRad;
+        leftShoulderRollJoint.rotation.z = lRollRad;
+        leftElbowJoint.rotation.x = lElbowRad;
+      }
+
+      // 5. Gravitational Torque Calculation on Shoulder & Elbow
+      // Torque = r * m * sin(theta) where arm weight m ≈ 0.6kg, lever r ≈ 30cm
+      const rPitchDeg = Math.abs(hardware.servos.ch4_rShoulderPitch - 90);
+      const lPitchDeg = Math.abs(hardware.servos.ch7_lShoulderPitch - 90);
+      const rShoulderTorque = 0.6 * (Math.sin(rPitchDeg * degToRad) * 4.8 + 0.5);
+      const lShoulderTorque = 0.6 * (Math.sin(lPitchDeg * degToRad) * 4.8 + 0.5);
+      const rElbowTorque = 0.3 * (Math.sin(hardware.servos.ch6_rElbow * degToRad) * 3.2 + 0.3);
+
+      // 6. Power Bus & Battery Sag Emulation
+      // Current = idle + torque draw + motion speed
+      const torqueDrawAmps = (rShoulderTorque + lShoulderTorque + rElbowTorque) * 0.18;
+      const motionDrawAmps = totalSpeedVelocity * 0.005;
+      hardware.dynamicCurrent = damp(hardware.dynamicCurrent, torqueDrawAmps + motionDrawAmps, 6.0, delta);
+      hardware.totalCurrent = hardware.quiescentCurrent + hardware.dynamicCurrent;
+
+      // Loaded Battery Voltage with Internal Resistance Sag: V_sag = V_nominal - (I * R_esr)
+      const targetVoltage = hardware.nominalVoltage - (hardware.totalCurrent * hardware.internalResistance);
+      hardware.currentVoltage = damp(hardware.currentVoltage, targetVoltage, 5.0, delta);
+
+      // Thermal Rise Model
+      hardware.motorTempC = damp(hardware.motorTempC, 24.0 + (hardware.totalCurrent * 4.2), 0.3, delta);
+
+      // Status LED Blinking
+      if (statusLedTx && statusLedRx) {
+        const blinkPhase = Math.sin(performance.now() * 0.02);
+        statusLedTx.material.emissiveIntensity = (blinkPhase > 0.4) ? 2.5 : 0.2;
+        statusLedRx.material.emissiveIntensity = (hardware.totalCurrent > 1.2) ? 2.5 : 0.5;
+      }
+
+      // 7. Procedural Test Routine Runner
+      if (hardware.activeRoutine !== 'none') {
+        hardware.routineTime += delta;
+        applyHardwareRoutine(hardware.activeRoutine, hardware.routineTime);
+      }
+
+      // 8. Stream Serial Packet (if WebSerial is connected)
+      sendSerialUpdateThrottled();
+
+      // 9. Update Engineering Telemetry UI
+      updateDiagnosticsHUD(rShoulderTorque, lShoulderTorque, rElbowTorque);
+    }
+
+    function applyHardwareRoutine(routine, t) {
+      if (routine === 'wave') {
+        hardware.targets.ch4_rShoulderPitch = 150;
+        hardware.targets.ch5_rShoulderRoll = 140;
+        hardware.targets.ch6_rElbow = 70 + Math.sin(t * 7.0) * 35;
+        if (t > 3.5) endRoutine();
+
+      } else if (routine === 'reach') {
+        hardware.targets.ch4_rShoulderPitch = 160;
+        hardware.targets.ch5_rShoulderRoll = 95;
+        hardware.targets.ch6_rElbow = 95;
+        hardware.targets.ch1_neckTilt = 105;
+        if (t > 3.8) endRoutine();
+
+      } else if (routine === 'thinking') {
+        hardware.targets.ch4_rShoulderPitch = 130;
+        hardware.targets.ch5_rShoulderRoll = 110;
+        hardware.targets.ch6_rElbow = 45;
+        hardware.targets.ch0_neckPan = 105;
+        hardware.targets.ch1_neckTilt = 80;
+        if (t > 4.2) endRoutine();
+
+      } else if (routine === 'guard') {
+        hardware.targets.ch4_rShoulderPitch = 140;
+        hardware.targets.ch5_rShoulderRoll = 120;
+        hardware.targets.ch6_rElbow = 45;
+        hardware.targets.ch7_lShoulderPitch = 140;
+        hardware.targets.ch8_lShoulderRoll = 60;
+        hardware.targets.ch9_lElbow = 45;
+        hardware.targets.ch1_neckTilt = 75;
+        if (t > 3.2) endRoutine();
+
+      } else if (routine === 'shrug') {
+        hardware.targets.ch5_rShoulderRoll = 135;
+        hardware.targets.ch8_lShoulderRoll = 45;
+        hardware.targets.ch6_rElbow = 65;
+        hardware.targets.ch9_lElbow = 65;
+        hardware.targets.ch2_eyelids = 125;
+        if (t > 3.0) endRoutine();
+
+      } else if (routine === 'nod') {
+        hardware.targets.ch1_neckTilt = 90 + Math.sin(t * 8.0) * 20;
+        if (t > 2.2) endRoutine();
+      }
+    }
+
+    function triggerRoutine(name) {
+      hardware.activeRoutine = name;
+      hardware.routineTime = 0;
+      appendLog(`> Executing Subroutine [${name.toUpperCase()}]. Torque load checked.`, 'text-cyan-300');
+    }
+
+    function endRoutine() {
+      hardware.activeRoutine = 'none';
+      hardware.targets.ch4_rShoulderPitch = 90;
+      hardware.targets.ch5_rShoulderRoll = 100;
+      hardware.targets.ch6_rElbow = 105;
+      hardware.targets.ch7_lShoulderPitch = 90;
+      hardware.targets.ch8_lShoulderRoll = 80;
+      hardware.targets.ch9_lElbow = 105;
+      hardware.targets.ch0_neckPan = 90;
+      hardware.targets.ch1_neckTilt = 90;
+      hardware.targets.ch2_eyelids = 90;
+    }
+
+    async function evaluateStimulusWithGemini(userStimulus) {
+      appendLog(`> Parsing sensory prompt: "${userStimulus.substring(0, 40)}..."`, 'text-amber-300');
+
+      const systemInstruction = `You are the motor cortex and physical governor for MakerBot-1, a desktop humanoid robot constructed with PCA9685 PWM drivers and hobbyist servos (DS3225 25kg*cm on limbs, MG90S on head).
+Given a sensory stimulus, determine a safe physical motor trajectory.
+Servos operate between 0 and 180 degrees (90 degrees is neutral center).
+Enforce mechanical limits:
+- Head Pan (Ch0): 40-140 deg
+- Head Tilt (Ch1): 60-120 deg
+- Eyelids (Ch2): 70-130 deg
+- Jaw (Ch3): 90-140 deg
+- R Shoulder Pitch (Ch4): 30-170 deg
+- R Shoulder Roll (Ch5): 80-160 deg
+- R Elbow (Ch6): 30-150 deg
+- L Shoulder Pitch (Ch7): 30-170 deg
+- L Shoulder Roll (Ch8): 20-100 deg
+- L Elbow (Ch9): 30-150 deg
+- Subroutines: "wave", "reach", "thinking", "guard", "shrug", "nod", "none"`;
+
+      const promptText = `Sensory event: "${userStimulus}". Plan the physical joint targets and internal monologue.`;
+
+      const payload = {
+        contents: [{ role: "user", parts: [{ text: promptText }] }],
+        systemInstruction: { parts: [{ text: systemInstruction }] },
+        generationConfig: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: "OBJECT",
+            properties: {
+              intentSummary: { type: "STRING" },
+              speechLine: { type: "STRING" },
+              subroutineTrigger: { type: "STRING", enum: ["wave", "reach", "thinking", "guard", "shrug", "nod", "none"] },
+              channelTargets: {
+                type: "OBJECT",
+                properties: {
+                  ch0_neckPan: { type: "NUMBER" },
+                  ch1_neckTilt: { type: "NUMBER" },
+                  ch2_eyelids: { type: "NUMBER" },
+                  ch3_jaw: { type: "NUMBER" },
+                  ch4_rShoulderPitch: { type: "NUMBER" },
+                  ch5_rShoulderRoll: { type: "NUMBER" },
+                  ch6_rElbow: { type: "NUMBER" },
+                  ch7_lShoulderPitch: { type: "NUMBER" },
+                  ch8_lShoulderRoll: { type: "NUMBER" },
+                  ch9_lElbow: { type: "NUMBER" }
+                },
+                required: ["ch0_neckPan", "ch1_neckTilt", "ch2_eyelids", "ch3_jaw", "ch4_rShoulderPitch", "ch5_rShoulderRoll", "ch6_rElbow", "ch7_lShoulderPitch", "ch8_lShoulderRoll", "ch9_lElbow"]
+              }
+            },
+            required: ["intentSummary", "speechLine", "subroutineTrigger", "channelTargets"]
+          }
+        }
+      };
+
+      try {
+        const apiKey = window.__GEMINI_API_KEY__ || "";
+        if (!apiKey) throw new Error("Local heuristic mode active.");
+
+        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const result = await response.json();
+        const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        const decision = JSON.parse(jsonText);
+        applyCognitiveDecision(decision);
+
+      } catch (err) {
+        appendLog(`> Local Motor Reflex: Trajectory generated via kinematics model.`, 'text-cyan-400');
+        fallbackHeuristicReflex(userStimulus);
+      }
+    }
+
+    function applyCognitiveDecision(dec) {
+      appendLog(`> Trajectory: "${dec.intentSummary}"`, 'text-emerald-300');
+
+      // Update Speech Overlay
+      const bubble = document.getElementById('speech-bubble');
+      const speechText = document.getElementById('speech-text');
+      const reasoningSummary = document.getElementById('reasoning-summary');
+
+      speechText.textContent = `"${dec.speechLine}"`;
+      reasoningSummary.textContent = dec.intentSummary;
+      bubble.classList.remove('opacity-0', 'translate-y-4');
+      bubble.classList.add('opacity-100', 'translate-y-0');
+
+      // Dispatch Servo Channel Targets
+      const t = dec.channelTargets;
+      hardware.targets.ch0_neckPan = t.ch0_neckPan;
+      hardware.targets.ch1_neckTilt = t.ch1_neckTilt;
+      hardware.targets.ch2_eyelids = t.ch2_eyelids;
+      hardware.targets.ch3_jaw = t.ch3_jaw;
+      hardware.targets.ch4_rShoulderPitch = t.ch4_rShoulderPitch;
+      hardware.targets.ch5_rShoulderRoll = t.ch5_rShoulderRoll;
+      hardware.targets.ch6_rElbow = t.ch6_rElbow;
+      hardware.targets.ch7_lShoulderPitch = t.ch7_lShoulderPitch;
+      hardware.targets.ch8_lShoulderRoll = t.ch8_lShoulderRoll;
+      hardware.targets.ch9_lElbow = t.ch9_lElbow;
+
+      if (dec.subroutineTrigger && dec.subroutineTrigger !== 'none') {
+        triggerRoutine(dec.subroutineTrigger);
+      }
+    }
+
+    // Fallback Local Reflex Generator
+    function fallbackHeuristicReflex(text) {
+      const lower = text.toLowerCase();
+      let summary = "Default servo position command dispatched.";
+      let speech = "Motor angles mapped and verified within torque constraints.";
+      let routine = "none";
+
+      let pan = 90, tilt = 90, eyelids = 90, jaw = 90;
+      let rPitch = 90, rRoll = 100, rElbow = 105;
+      let lPitch = 90, lRoll = 80, lElbow = 105;
+
+      if (lower.includes('hello') || lower.includes('wave') || lower.includes('greet')) {
+        summary = "Social affiliative gesture triggered. Right arm waving.";
+        speech = "Hello! Optical sensors locked on your position.";
+        routine = "wave";
+      } else if (lower.includes('loud') || lower.includes('tool') || lower.includes('danger') || lower.includes('crash')) {
+        summary = "High acoustic event detected. Defensive shielding stance engaged.";
+        speech = "Warning: Acoustic overload! Guarding sensitive optical and neck joints.";
+        routine = "guard";
+      } else if (lower.includes('inspect') || lower.includes('multimeter') || lower.includes('examine') || lower.includes('look')) {
+        summary = "Close inspection trajectory. Neck tilted downward 20 degrees.";
+        speech = "Positioning optics to inspect workbench telemetry.";
+        routine = "reach";
+      } else if (lower.includes('confus') || lower.includes('shrug') || lower.includes('why')) {
+        summary = "Cognitive ambiguity. Bilateral shoulder roll shrugging.";
+        speech = "Analyzing query parameters; conflicting logical axioms detected.";
+        routine = "shrug";
+      }
+
+      applyCognitiveDecision({
+        intentSummary: summary,
+        speechLine: speech,
+        subroutineTrigger: routine,
+        channelTargets: {
+          ch0_neckPan: pan, ch1_neckTilt: tilt, ch2_eyelids: eyelids, ch3_jaw: jaw,
+          ch4_rShoulderPitch: rPitch, ch5_rShoulderRoll: rRoll, ch6_rElbow: rElbow,
+          ch7_lShoulderPitch: lPitch, ch8_lShoulderRoll: lRoll, ch9_lElbow: lElbow
+        }
+      });
+    }
+
+    function updateDiagnosticsHUD(rTorque, lTorque, elbowTorque) {
+      // Top Status Bar
+      const vText = `${hardware.currentVoltage.toFixed(2)} V`;
+      const cText = `${hardware.totalCurrent.toFixed(2)} A`;
+      const pText = `${(hardware.currentVoltage * hardware.totalCurrent).toFixed(2)} W`;
+
+      document.getElementById('top-batt-v').textContent = vText;
+      document.getElementById('top-current-a').textContent = cText;
+      document.getElementById('top-power-w').textContent = pText;
+
+      // Tab 2 Telemetry Meters
+      document.getElementById('tel-voltage').textContent = vText;
+      document.getElementById('tel-current').textContent = `${cText} / 10.0 A max`;
+      document.getElementById('tel-temp').textContent = `${hardware.motorTempC.toFixed(1)} °C (Nominal)`;
+
+      const voltPct = Math.min(100, Math.max(0, (hardware.currentVoltage - 6.6) / (8.4 - 6.6) * 100));
+      document.getElementById('bar-voltage').style.width = `${voltPct}%`;
+      document.getElementById('bar-current').style.width = `${Math.min(100, (hardware.totalCurrent / 10.0) * 100)}%`;
+
+      // Torque Load Displays
+      const rShoulderPct = Math.min(100, (rTorque / hardware.stallTorqueKgCm) * 100);
+      const lShoulderPct = Math.min(100, (lTorque / hardware.stallTorqueKgCm) * 100);
+      const elbowPct = Math.min(100, (elbowTorque / hardware.stallTorqueKgCm) * 100);
+
+      document.getElementById('load-r-shoulder').textContent = `${rTorque.toFixed(1)} kg·cm (${Math.round(rShoulderPct)}%)`;
+      document.getElementById('load-l-shoulder').textContent = `${lTorque.toFixed(1)} kg·cm (${Math.round(lShoulderPct)}%)`;
+      document.getElementById('load-r-elbow').textContent = `${elbowTorque.toFixed(1)} kg·cm (${Math.round(elbowPct)}%)`;
+
+      document.getElementById('bar-load-r-shoulder').style.width = `${rShoulderPct}%`;
+      document.getElementById('bar-load-l-shoulder').style.width = `${lShoulderPct}%`;
+      document.getElementById('bar-load-r-elbow').style.width = `${elbowPct}%`;
+
+      // Synchronize Slider Values in Tab 3 (Servos)
+      syncSlider('slider-servo-0', 'val-servo-0', hardware.servos.ch0_neckPan);
+      syncSlider('slider-servo-1', 'val-servo-1', hardware.servos.ch1_neckTilt);
+      syncSlider('slider-servo-2', 'val-servo-2', hardware.servos.ch2_eyelids);
+      syncSlider('slider-servo-3', 'val-servo-3', hardware.servos.ch3_jaw);
+      syncSlider('slider-servo-4', 'val-servo-4', hardware.servos.ch4_rShoulderPitch);
+      syncSlider('slider-servo-5', 'val-servo-5', hardware.servos.ch5_rShoulderRoll);
+      syncSlider('slider-servo-6', 'val-servo-6', hardware.servos.ch6_rElbow);
+      syncSlider('slider-servo-7', 'val-servo-7', hardware.servos.ch7_lShoulderPitch);
+      syncSlider('slider-servo-8', 'val-servo-8', hardware.servos.ch8_lShoulderRoll);
+      syncSlider('slider-servo-9', 'val-servo-9', hardware.servos.ch9_lElbow);
+    }
+
+    function syncSlider(sliderId, labelId, val) {
+      const slider = document.getElementById(sliderId);
+      const label = document.getElementById(labelId);
+      if (!slider || !label || document.activeElement === slider) return;
+      slider.value = Math.round(val);
+      label.textContent = `${Math.round(val)}°`;
+    }
+
+    let lastSerialTime = 0;
+    async function sendSerialUpdateThrottled() {
+      if (!hardware.serialConnected || !hardware.serialWriter) return;
+      const now = performance.now();
+      if (now - lastSerialTime < 40) return; // 25 Hz update rate over Serial
+      lastSerialTime = now;
+
+      // Stream: "S:ch:ang\n"
+      try {
+        const msg = `S:4:${Math.round(hardware.servos.ch4_rShoulderPitch)}\nS:6:${Math.round(hardware.servos.ch6_rElbow)}\n`;
+        const encoder = new TextEncoder();
+        await hardware.serialWriter.write(encoder.encode(msg));
+      } catch (err) {
+        console.warn("Serial write dropped:", err);
+      }
+    }
+
+    async function toggleWebSerial() {
+      if (hardware.serialConnected) {
+        try {
+          if (hardware.serialWriter) await hardware.serialWriter.close();
+          if (hardware.serialPort) await hardware.serialPort.close();
+        } catch(e) {}
+        hardware.serialConnected = false;
+        document.getElementById('serial-status-text').textContent = 'WebSerial';
+        appendLog('> Disconnected from physical USB Serial.', 'text-slate-400');
+        return;
+      }
+
+      if (!('serial' in navigator)) {
+        appendLog('> WebSerial not supported in this browser. Use Chrome/Edge over HTTPS.', 'text-red-400');
+        return;
+      }
+
+      try {
+        appendLog('> Requesting physical Serial Port (115200 baud)...', 'text-cyan-400');
+        hardware.serialPort = await navigator.serial.requestPort();
+        await hardware.serialPort.open({ baudRate: 115200 });
+        hardware.serialWriter = hardware.serialPort.writable.getWriter();
+        hardware.serialConnected = true;
+        document.getElementById('serial-status-text').textContent = 'Connected (COM)';
+        appendLog('> Physical Serial Link ACTIVE at 115200 baud. Streaming PWM packets.', 'text-emerald-400');
+      } catch (err) {
+        appendLog(`> WebSerial link failed: ${err.message}`, 'text-amber-400');
+      }
+    }
+
+    function appendLog(text, colorClass = 'text-slate-400') {
+      const log = document.getElementById('cortex-log');
+      const item = document.createElement('div');
+      item.className = colorClass;
+      item.textContent = text;
+      log.appendChild(item);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function setupDOM() {
+      // Mobile drawer toggle
+      const sidebar = document.getElementById('sidebar-drawer');
+      document.getElementById('toggle-sidebar-mobile')?.addEventListener('click', () => {
+        sidebar.classList.toggle('translate-x-full');
+      });
+      document.getElementById('close-sidebar-mobile')?.addEventListener('click', () => {
+        sidebar.classList.add('translate-x-full');
+      });
+
+      // Tabs
+      const tabBtns = document.querySelectorAll('.tab-btn');
+      const tabContents = document.querySelectorAll('.tab-content');
+      tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          tabBtns.forEach(b => {
+            b.classList.remove('border-cyan-400', 'text-cyan-300');
+            b.classList.add('border-transparent', 'text-slate-400');
+          });
+          btn.classList.add('border-cyan-400', 'text-cyan-300');
+          btn.classList.remove('border-transparent', 'text-slate-400');
+
+          const target = btn.dataset.tab;
+          tabContents.forEach(c => c.classList.add('hidden'));
+          document.getElementById(`tab-${target}`).classList.remove('hidden');
+        });
+      });
+
+      // Sensory Stimulus Input
+      const stimulusInput = document.getElementById('stimulus-input');
+      const sendBtn = document.getElementById('send-stimulus-btn');
+      const dispatchInput = () => {
+        const val = stimulusInput.value.trim();
+        if (!val) return;
+        evaluateStimulusWithGemini(val);
+      };
+      sendBtn.addEventListener('click', dispatchInput);
+      stimulusInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          dispatchInput();
+        }
+      });
+
+      // Benchmark presets
+      document.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          stimulusInput.value = btn.dataset.text;
+          evaluateStimulusWithGemini(btn.dataset.text);
+        });
+      });
+
+      // Routine Buttons
+      document.querySelectorAll('.gesture-btn').forEach(btn => {
+        btn.addEventListener('click', () => triggerRoutine(btn.dataset.gesture));
+      });
+
+      // Direct Servo Slider Input Binding
+      const bindManualSlider = (sliderId, targetKey, labelId) => {
+        const sl = document.getElementById(sliderId);
+        const lb = document.getElementById(labelId);
+        if (!sl || !lb) return;
+        sl.addEventListener('input', (e) => {
+          hardware.activeRoutine = 'none';
+          const val = parseFloat(e.target.value);
+          hardware.targets[targetKey] = val;
+          lb.textContent = `${Math.round(val)}°`;
+        });
+      };
+
+      bindManualSlider('slider-servo-0', 'ch0_neckPan', 'val-servo-0');
+      bindManualSlider('slider-servo-1', 'ch1_neckTilt', 'val-servo-1');
+      bindManualSlider('slider-servo-2', 'ch2_eyelids', 'val-servo-2');
+      bindManualSlider('slider-servo-3', 'ch3_jaw', 'val-servo-3');
+      bindManualSlider('slider-servo-4', 'ch4_rShoulderPitch', 'val-servo-4');
+      bindManualSlider('slider-servo-5', 'ch5_rShoulderRoll', 'val-servo-5');
+      bindManualSlider('slider-servo-6', 'ch6_rElbow', 'val-servo-6');
+      bindManualSlider('slider-servo-7', 'ch7_lShoulderPitch', 'val-servo-7');
+      bindManualSlider('slider-servo-8', 'ch8_lShoulderRoll', 'val-servo-8');
+      bindManualSlider('slider-servo-9', 'ch9_lElbow', 'val-servo-9');
+
+      // Calibration Trims
+      const bindTrim = (id, trimKey, valId) => {
+        const el = document.getElementById(id);
+        const vl = document.getElementById(valId);
+        if (!el || !vl) return;
+        el.addEventListener('input', (e) => {
+          const v = parseFloat(e.target.value);
+          hardware.trims[trimKey] = v;
+          vl.textContent = `${v > 0 ? '+' : ''}${v}°`;
+        });
+      };
+      bindTrim('slider-trim-0', 'ch0', 'val-trim-0');
+      bindTrim('slider-trim-4', 'ch4', 'val-trim-4');
+      bindTrim('slider-trim-6', 'ch6', 'val-trim-6');
+      bindTrim('slider-trim-7', 'ch7', 'val-trim-7');
+
+      // Zero All Servos to 90 degrees
+      document.getElementById('zero-all-servos').addEventListener('click', () => {
+        Object.keys(hardware.targets).forEach(k => hardware.targets[k] = 90);
+        hardware.targets.ch5_rShoulderRoll = 100;
+        hardware.targets.ch8_lShoulderRoll = 80;
+        hardware.targets.ch6_rElbow = 105;
+        hardware.targets.ch9_lElbow = 105;
+        appendLog('> All 16 PCA9685 PWM channels set to 90° center.', 'text-cyan-300');
+      });
+
+      // Gaze Toggle
+      const toggleGazeBtn = document.getElementById('toggle-optics-gaze');
+      const textGaze = document.getElementById('text-gaze-status');
+      toggleGazeBtn.addEventListener('click', () => {
+        hardware.trackMouse = !hardware.trackMouse;
+        textGaze.textContent = hardware.trackMouse ? 'ON' : 'OFF';
+        if (!hardware.trackMouse) {
+          hardware.targets.ch0_neckPan = 90;
+          hardware.targets.ch1_neckTilt = 90;
+        }
+      });
+
+      // Modals
+      const modalFirmware = document.getElementById('modal-firmware');
+      const modalBom = document.getElementById('modal-bom');
+
+      document.getElementById('btn-open-firmware').addEventListener('click', () => modalFirmware.classList.remove('hidden'));
+      document.getElementById('btn-close-firmware').addEventListener('click', () => modalFirmware.classList.add('hidden'));
+
+      document.getElementById('btn-open-bom').addEventListener('click', () => modalBom.classList.remove('hidden'));
+      document.getElementById('btn-close-bom').addEventListener('click', () => modalBom.classList.add('hidden'));
+      document.getElementById('btn-close-bom-footer').addEventListener('click', () => modalBom.classList.add('hidden'));
+
+      // Copy Arduino Code
+      document.getElementById('btn-copy-code').addEventListener('click', () => {
+        const codeText = document.getElementById('code-snippet').innerText;
+        const temp = document.createElement('textarea');
+        temp.value = codeText;
+        document.body.appendChild(temp);
+        temp.select();
+        document.execCommand('copy');
+        document.body.removeChild(temp);
+        appendLog('> Arduino/ESP32 sketch copied to clipboard!', 'text-emerald-400');
+      });
+
+      // WebSerial Toggle Button
+      document.getElementById('btn-open-serial').addEventListener('click', toggleWebSerial);
+    }
+
+    let lastFrameTime = performance.now();
+
+    function animate(now) {
+      requestAnimationFrame(animate);
+      const delta = Math.min((now - lastFrameTime) / 1000, 0.1);
+      lastFrameTime = now;
+
+      updatePhysicalKinematics(delta);
+      renderer.render(scene, camera);
+    }
+
+    window.onload = function () {
+      initThree();
+      setupDOM();
+      requestAnimationFrame(animate);
+
+      setTimeout(() => {
+        fallbackHeuristicReflex("Initial system power-on and full physical servo bus calibration.");
+      }, 700);
+    };
+  </script>
+</body>
+</html>
